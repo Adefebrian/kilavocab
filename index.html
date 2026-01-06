@@ -1,0 +1,531 @@
+import React, { useState, useEffect } from 'react';
+import { Book, Search, Filter, RefreshCw, Loader2, Plus, Trash2, BookMarked, ChevronLeft, ChevronRight } from 'lucide-react';
+
+const VocabWebsite = () => {
+  const [verbs, setVerbs] = useState([]);
+  const [myVocab, setMyVocab] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedLevel, setSelectedLevel] = useState('all');
+  const [selectedType, setSelectedType] = useState('all');
+  const [selectedCategory, setSelectedCategory] = useState('all');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [activeTab, setActiveTab] = useState('all'); // 'all' or 'my-vocab'
+  const [error, setError] = useState('');
+  const itemsPerPage = 10;
+
+  const GEMINI_API_KEY = 'AIzaSyC9JOGEYUQTr0splWSJOSvI6UE_I5p8q2M';
+
+  // Load saved vocabulary from storage on mount
+  useEffect(() => {
+    loadMyVocab();
+  }, []);
+
+  const loadMyVocab = async () => {
+    try {
+      const result = await window.storage.get('my-vocabulary');
+      if (result && result.value) {
+        setMyVocab(JSON.parse(result.value));
+      }
+    } catch (error) {
+      console.log('No saved vocabulary yet');
+    }
+  };
+
+  const saveMyVocab = async (vocab) => {
+    try {
+      await window.storage.set('my-vocabulary', JSON.stringify(vocab));
+      setMyVocab(vocab);
+    } catch (error) {
+      console.error('Failed to save vocabulary:', error);
+    }
+  };
+
+  const generateVocabulary = async () => {
+    setLoading(true);
+    setError('');
+
+    const prompt = `You are an expert English language teacher creating vocabulary materials for Indonesian learners.
+
+CRITICAL INSTRUCTIONS - FOLLOW EXACTLY:
+1. Return ONLY a valid JSON array with NO additional text, explanation, or markdown
+2. Do NOT include \`\`\`json or \`\`\` markers
+3. Start directly with [ and end with ]
+4. Each verb must follow the exact structure shown below
+
+Create a comprehensive list of 100 English verbs for beginner to intermediate Indonesian learners.
+
+VERB SELECTION CRITERIA:
+- 60 beginner verbs (A1-A2): Essential daily verbs that Indonesian learners encounter first
+- 40 intermediate verbs (B1): More specific verbs for detailed communication
+- Mix regular and irregular verbs naturally (approximately 60% regular, 40% irregular)
+- Focus on HIGH-FREQUENCY verbs used in real-life situations
+- Include verbs from various activity domains
+
+CATEGORIES TO COVER (distribute verbs across these):
+1. Daily Routine: wake up, sleep, eat, drink, shower, brush, dress, etc.
+2. Movement: go, come, walk, run, drive, ride, fly, move, etc.
+3. Communication: say, tell, speak, talk, ask, answer, call, write, etc.
+4. Learning & Thinking: learn, study, read, write, think, understand, know, remember, etc.
+5. Work & Tasks: work, make, do, create, build, fix, prepare, organize, etc.
+6. Social Activities: meet, visit, invite, help, share, play, dance, sing, etc.
+7. Food & Cooking: cook, bake, fry, boil, cut, mix, taste, serve, etc.
+8. Household: clean, wash, sweep, iron, arrange, decorate, etc.
+9. Shopping & Money: buy, sell, pay, spend, save, choose, order, etc.
+10. Emotions & States: feel, want, need, like, love, hate, enjoy, hope, etc.
+11. Technology: use, send, receive, download, upload, connect, charge, etc.
+12. Sports & Exercise: exercise, swim, jump, climb, throw, catch, etc.
+
+INDONESIAN TRANSLATION RULES:
+- Provide the most common, natural Indonesian equivalent
+- For verbs with multiple meanings, choose the most frequent meaning
+- Use simple, clear Indonesian that beginners understand
+- Avoid overly formal or literary translations
+- Use base form of Indonesian verbs (without affixes when simpler)
+
+LEVEL DISTRIBUTION GUIDELINES:
+BEGINNER verbs should be:
+- Used multiple times daily
+- Essential for basic survival needs
+- Simple concepts with clear actions
+- Common in everyday Indonesian contexts
+Examples: makan (eat), minum (drink), pergi (go), tidur (sleep)
+
+INTERMEDIATE verbs should be:
+- Used for more specific situations
+- Require more context to use correctly
+- More nuanced meanings
+- Help express detailed thoughts
+Examples: menjelaskan (explain), menyarankan (suggest), memutuskan (decide)
+
+RETURN FORMAT - EXACT JSON STRUCTURE:
+[
+  {
+    "v1": "go",
+    "v2": "went",
+    "v3": "gone",
+    "indonesian": "pergi",
+    "type": "irregular",
+    "level": "beginner",
+    "category": "movement",
+    "example": "I go to school every day",
+    "exampleId": "Saya pergi ke sekolah setiap hari"
+  },
+  {
+    "v1": "study",
+    "v2": "studied",
+    "v3": "studied",
+    "indonesian": "belajar",
+    "type": "regular",
+    "level": "beginner",
+    "category": "learning",
+    "example": "She studies English every morning",
+    "exampleId": "Dia belajar bahasa Inggris setiap pagi"
+  }
+]
+
+QUALITY CHECKLIST - ENSURE:
+✓ All 100 verbs are unique (no duplicates)
+✓ Each verb has all required fields: v1, v2, v3, indonesian, type, level, category, example, exampleId
+✓ V2 and V3 forms are grammatically correct
+✓ Indonesian translations are accurate and natural
+✓ Examples use simple present or simple past tense
+✓ Examples are practical and realistic
+✓ Categories are evenly distributed
+✓ Both regular and irregular verbs at each level
+✓ Valid JSON format (no trailing commas, proper quotes)
+
+NOW GENERATE THE 100-VERB JSON ARRAY:`;
+
+    try {
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${GEMINI_API_KEY}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: {
+              temperature: 0.8,
+              maxOutputTokens: 12000,
+            },
+          }),
+        }
+      );
+
+      const data = await response.json();
+      
+      if (data.error) {
+        throw new Error(data.error.message);
+      }
+
+      const text = data.candidates[0].content.parts[0].text;
+      const cleanText = text.replace(/```json\n?|\n?```/g, '').trim();
+      const parsedVerbs = JSON.parse(cleanText);
+      
+      setVerbs(parsedVerbs);
+      setCurrentPage(1);
+    } catch (err) {
+      setError('Failed to generate vocabulary. Please try again.');
+      console.error('Error:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    generateVocabulary();
+  }, []);
+
+  const addToMyVocab = (verb) => {
+    const isAlreadyAdded = myVocab.some(v => v.v1 === verb.v1);
+    if (!isAlreadyAdded) {
+      const updated = [...myVocab, { ...verb, addedAt: new Date().toISOString() }];
+      saveMyVocab(updated);
+    }
+  };
+
+  const removeFromMyVocab = (verbV1) => {
+    const updated = myVocab.filter(v => v.v1 !== verbV1);
+    saveMyVocab(updated);
+  };
+
+  const isInMyVocab = (verbV1) => {
+    return myVocab.some(v => v.v1 === verbV1);
+  };
+
+  const displayVerbs = activeTab === 'all' ? verbs : myVocab;
+
+  const filteredVerbs = displayVerbs.filter(verb => {
+    const matchesSearch = 
+      verb.v1.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      verb.indonesian.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (verb.category && verb.category.toLowerCase().includes(searchTerm.toLowerCase()));
+    const matchesLevel = selectedLevel === 'all' || verb.level === selectedLevel;
+    const matchesType = selectedType === 'all' || verb.type === selectedType;
+    const matchesCategory = selectedCategory === 'all' || verb.category === selectedCategory;
+    return matchesSearch && matchesLevel && matchesType && matchesCategory;
+  });
+
+  // Pagination
+  const totalPages = Math.ceil(filteredVerbs.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const currentVerbs = filteredVerbs.slice(startIndex, endIndex);
+
+  const goToPage = (page) => {
+    setCurrentPage(Math.max(1, Math.min(page, totalPages)));
+  };
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, selectedLevel, selectedType, selectedCategory, activeTab]);
+
+  const categories = ['all', ...new Set(verbs.map(v => v.category).filter(Boolean))];
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 p-4 md:p-8">
+      <div className="max-w-7xl mx-auto">
+        {/* Header */}
+        <div className="text-center mb-8">
+          <div className="flex items-center justify-center gap-3 mb-3">
+            <Book className="w-10 h-10 text-indigo-600" />
+            <h1 className="text-4xl font-bold text-gray-800">English Verb Vocabulary</h1>
+          </div>
+          <p className="text-gray-600 text-lg">Learn English verbs from beginner to intermediate level</p>
+          <p className="text-sm text-gray-500 mt-2">Kosakata kata kerja bahasa Inggris dengan terjemahan Indonesia</p>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex gap-2 mb-6">
+          <button
+            onClick={() => setActiveTab('all')}
+            className={`flex-1 py-3 px-6 rounded-lg font-semibold transition-colors ${
+              activeTab === 'all'
+                ? 'bg-indigo-600 text-white shadow-lg'
+                : 'bg-white text-gray-700 hover:bg-gray-50'
+            }`}
+          >
+            <Book className="w-5 h-5 inline mr-2" />
+            All Vocabulary ({verbs.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('my-vocab')}
+            className={`flex-1 py-3 px-6 rounded-lg font-semibold transition-colors ${
+              activeTab === 'my-vocab'
+                ? 'bg-green-600 text-white shadow-lg'
+                : 'bg-white text-gray-700 hover:bg-gray-50'
+            }`}
+          >
+            <BookMarked className="w-5 h-5 inline mr-2" />
+            My Vocabulary ({myVocab.length})
+          </button>
+        </div>
+
+        {/* Controls */}
+        <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+            {/* Search */}
+            <div className="lg:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                <Search className="w-4 h-4 inline mr-1" />
+                Search
+              </label>
+              <input
+                type="text"
+                placeholder="Search by English, Indonesian, or category..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+              />
+            </div>
+
+            {/* Category Filter */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                <Filter className="w-4 h-4 inline mr-1" />
+                Category
+              </label>
+              <select
+                value={selectedCategory}
+                onChange={(e) => setSelectedCategory(e.target.value)}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+              >
+                {categories.map(cat => (
+                  <option key={cat} value={cat}>
+                    {cat === 'all' ? 'All Categories' : cat.charAt(0).toUpperCase() + cat.slice(1)}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Level Filter */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                <Filter className="w-4 h-4 inline mr-1" />
+                Level
+              </label>
+              <select
+                value={selectedLevel}
+                onChange={(e) => setSelectedLevel(e.target.value)}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+              >
+                <option value="all">All Levels</option>
+                <option value="beginner">Beginner</option>
+                <option value="intermediate">Intermediate</option>
+              </select>
+            </div>
+
+            {/* Type Filter */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                <Filter className="w-4 h-4 inline mr-1" />
+                Type
+              </label>
+              <select
+                value={selectedType}
+                onChange={(e) => setSelectedType(e.target.value)}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+              >
+                <option value="all">All Types</option>
+                <option value="regular">Regular</option>
+                <option value="irregular">Irregular</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Regenerate Button */}
+          {activeTab === 'all' && (
+            <button
+              onClick={generateVocabulary}
+              disabled={loading}
+              className="mt-4 w-full md:w-auto px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2 mx-auto"
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="w-4 h-4" />
+                  Generate New Vocabulary
+                </>
+              )}
+            </button>
+          )}
+
+          {error && (
+            <div className="mt-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded-lg">
+              {error}
+            </div>
+          )}
+        </div>
+
+        {/* Stats */}
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+          <div className="bg-white rounded-lg shadow p-4 text-center">
+            <div className="text-2xl font-bold text-indigo-600">{filteredVerbs.length}</div>
+            <div className="text-sm text-gray-600">Showing</div>
+          </div>
+          <div className="bg-white rounded-lg shadow p-4 text-center">
+            <div className="text-2xl font-bold text-green-600">
+              {filteredVerbs.filter(v => v.type === 'regular').length}
+            </div>
+            <div className="text-sm text-gray-600">Regular</div>
+          </div>
+          <div className="bg-white rounded-lg shadow p-4 text-center">
+            <div className="text-2xl font-bold text-orange-600">
+              {filteredVerbs.filter(v => v.type === 'irregular').length}
+            </div>
+            <div className="text-sm text-gray-600">Irregular</div>
+          </div>
+          <div className="bg-white rounded-lg shadow p-4 text-center">
+            <div className="text-2xl font-bold text-blue-600">
+              {filteredVerbs.filter(v => v.level === 'beginner').length}
+            </div>
+            <div className="text-sm text-gray-600">Beginner</div>
+          </div>
+          <div className="bg-white rounded-lg shadow p-4 text-center">
+            <div className="text-2xl font-bold text-purple-600">
+              {filteredVerbs.filter(v => v.level === 'intermediate').length}
+            </div>
+            <div className="text-sm text-gray-600">Intermediate</div>
+          </div>
+        </div>
+
+        {/* Vocabulary Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+          {loading ? (
+            <div className="col-span-full flex flex-col items-center justify-center py-12">
+              <Loader2 className="w-12 h-12 animate-spin text-indigo-600 mb-4" />
+              <p className="text-gray-600">Loading vocabulary...</p>
+            </div>
+          ) : currentVerbs.length === 0 ? (
+            <div className="col-span-full text-center py-12 text-gray-500">
+              {activeTab === 'my-vocab' ? (
+                <>
+                  <BookMarked className="w-16 h-16 mx-auto mb-4 text-gray-400" />
+                  <p className="text-lg mb-2">No vocabulary saved yet</p>
+                  <p className="text-sm">Add verbs from "All Vocabulary" to start learning!</p>
+                </>
+              ) : (
+                <>
+                  <Search className="w-16 h-16 mx-auto mb-4 text-gray-400" />
+                  <p>No verbs found. Try adjusting your filters or search term.</p>
+                </>
+              )}
+            </div>
+          ) : (
+            currentVerbs.map((verb, idx) => (
+              <div key={idx} className="bg-white rounded-xl shadow-lg p-6 hover:shadow-xl transition-shadow">
+                <div className="flex justify-between items-start mb-4">
+                  <div>
+                    <h3 className="text-2xl font-bold text-gray-900 mb-2">{verb.v1}</h3>
+                    <p className="text-lg text-indigo-600 font-semibold">{verb.indonesian}</p>
+                  </div>
+                  <button
+                    onClick={() => isInMyVocab(verb.v1) ? removeFromMyVocab(verb.v1) : addToMyVocab(verb)}
+                    className={`p-2 rounded-lg transition-colors ${
+                      isInMyVocab(verb.v1)
+                        ? 'bg-red-100 text-red-600 hover:bg-red-200'
+                        : 'bg-green-100 text-green-600 hover:bg-green-200'
+                    }`}
+                    title={isInMyVocab(verb.v1) ? 'Remove from My Vocabulary' : 'Add to My Vocabulary'}
+                  >
+                    {isInMyVocab(verb.v1) ? <Trash2 className="w-5 h-5" /> : <Plus className="w-5 h-5" />}
+                  </button>
+                </div>
+
+                <div className="space-y-3 mb-4">
+                  <div className="grid grid-cols-3 gap-2 text-sm">
+                    <div>
+                      <span className="text-gray-500">V1:</span>
+                      <p className="font-medium">{verb.v1}</p>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">V2:</span>
+                      <p className="font-medium">{verb.v2}</p>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">V3:</span>
+                      <p className="font-medium">{verb.v3}</p>
+                    </div>
+                  </div>
+
+                  {verb.example && (
+                    <div className="bg-gray-50 p-3 rounded-lg">
+                      <p className="text-sm text-gray-700 mb-1">📝 {verb.example}</p>
+                      <p className="text-sm text-gray-600 italic">{verb.exampleId}</p>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                    verb.type === 'regular' 
+                      ? 'bg-green-100 text-green-800' 
+                      : 'bg-orange-100 text-orange-800'
+                  }`}>
+                    {verb.type}
+                  </span>
+                  <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                    verb.level === 'beginner' 
+                      ? 'bg-blue-100 text-blue-800' 
+                      : 'bg-purple-100 text-purple-800'
+                  }`}>
+                    {verb.level}
+                  </span>
+                  {verb.category && (
+                    <span className="px-3 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-800">
+                      {verb.category}
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="bg-white rounded-xl shadow-lg p-4 flex items-center justify-between">
+            <button
+              onClick={() => goToPage(currentPage - 1)}
+              disabled={currentPage === 1}
+              className="px-4 py-2 bg-indigo-600 text-white rounded-lg disabled:bg-gray-300 disabled:cursor-not-allowed hover:bg-indigo-700 transition-colors flex items-center gap-2"
+            >
+              <ChevronLeft className="w-4 h-4" />
+              Previous
+            </button>
+
+            <div className="flex items-center gap-2">
+              <span className="text-gray-600">
+                Page {currentPage} of {totalPages}
+              </span>
+              <span className="text-gray-400">
+                ({startIndex + 1}-{Math.min(endIndex, filteredVerbs.length)} of {filteredVerbs.length})
+              </span>
+            </div>
+
+            <button
+              onClick={() => goToPage(currentPage + 1)}
+              disabled={currentPage === totalPages}
+              className="px-4 py-2 bg-indigo-600 text-white rounded-lg disabled:bg-gray-300 disabled:cursor-not-allowed hover:bg-indigo-700 transition-colors flex items-center gap-2"
+            >
+              Next
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
+        {/* Footer */}
+        <div className="mt-8 text-center text-gray-600 text-sm">
+          <p>Powered by Google Gemini AI | Created for English learners in Indonesia</p>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default VocabWebsite;
